@@ -1,0 +1,17 @@
+{{define "published_list"}}
+<section class="sub-card">
+  <h3>My published sentences</h3>
+  {{if .Sentences}}
+    <ul class="simple-list">
+      {{range .Sentences}}
+      <li>
+        <div>{{.Text}}</div>
+        <small>ID: {{.ID}}</small>
+      </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p>No published sentence yet.</p>
+  {{end}}
+</section>
+{{end}}

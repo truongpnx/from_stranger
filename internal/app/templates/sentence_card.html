@@ -1,0 +1,15 @@
+{{define "sentence_card"}}
+{{if .Sentence}}
+<article class="sentence-card">
+  <p>{{.Sentence.Text}}</p>
+
+  <form class="reactions" hx-post="/react" hx-target="#reaction-result" hx-swap="innerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="sentence_id" value="{{.Sentence.ID}}">
+    <button type="submit" name="reaction_type" value="heart">❤️ Heart</button>
+    <button type="submit" name="reaction_type" value="hate">💔 Hate</button>
+    <button type="submit" name="reaction_type" value="ignore">🙈 Ignore</button>
+  </form>
+  <div id="reaction-result"></div>
+</article>
+{{end}}
+{{end}}

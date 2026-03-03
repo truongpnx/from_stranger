@@ -1,0 +1,23 @@
+{{define "ready_results_list"}}
+<section class="sub-card">
+  <h3>Ready results</h3>
+  {{if .Sentences}}
+    <ul class="simple-list">
+      {{range .Sentences}}
+      <li>
+        <button
+          class="link-btn"
+          hx-get="/results/{{.ID}}"
+          hx-target="#result-detail"
+          hx-swap="innerHTML"
+        >
+          View result: {{.Text}}
+        </button>
+      </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p>No ready result yet.</p>
+  {{end}}
+</section>
+{{end}}

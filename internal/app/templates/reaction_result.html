@@ -1,0 +1,5 @@
+{{define "reaction_result"}}
+{{if .Message}}
+<div class="status {{if .Success}}ok{{else}}error{{end}}">{{.Message}}</div>
+{{end}}
+{{end}}

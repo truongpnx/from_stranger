@@ -1,0 +1,6 @@
+{{define "publish_form"}}
+<form hx-post="/publish" hx-target="#publish-result" hx-swap="innerHTML">
+  <textarea name="text" rows="4" maxlength="700" placeholder="Write up to 100 words" required></textarea>
+  <button type="submit">Publish</button>
+</form>
+{{end}}

@@ -1,0 +1,9 @@
+{{define "publish_result"}}
+<div class="status {{if .Success}}ok{{else}}error{{end}}">
+  <p>{{.Message}}</p>
+  {{if .Success}}
+  <p>Result ID: <strong>{{.ResultID}}</strong></p>
+  <p>Check later at <a href="/results/{{.ResultID}}">/results/{{.ResultID}}</a></p>
+  {{end}}
+</div>
+{{end}}

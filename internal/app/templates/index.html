@@ -1,0 +1,28 @@
+{{define "content"}}
+<section class="card">
+  <h2>Publish</h2>
+  <form hx-post="/publish" hx-target="#publish-result" hx-swap="innerHTML">
+    <textarea name="text" rows="4" maxlength="700" placeholder="Write up to 100 words" required></textarea>
+    <button type="submit">Publish</button>
+  </form>
+  <div id="publish-result"></div>
+  <div class="inline-actions">
+    <button hx-get="/published" hx-target="#published-list" hx-swap="innerHTML">Refresh my published</button>
+  </div>
+  <div id="published-list" hx-get="/published" hx-trigger="load" hx-swap="innerHTML"></div>
+</section>
+
+<section class="card">
+  <h2>Random sentence</h2>
+  <div id="random-result" hx-get="/random" hx-trigger="load, next-sentence from:body" hx-swap="innerHTML"></div>
+</section>
+
+<section class="card">
+  <h2>Results</h2>
+  <div class="inline-actions">
+    <button hx-get="/results/ready" hx-target="#ready-results" hx-swap="innerHTML">Refresh ready results</button>
+  </div>
+  <div id="ready-results" hx-get="/results/ready" hx-trigger="load" hx-swap="innerHTML"></div>
+  <div id="result-detail"></div>
+</section>
+{{end}}
