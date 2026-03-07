@@ -1,17 +1,16 @@
 {{define "published_list"}}
-<section class="sub-card">
-  <h3>My published sentences</h3>
-  {{if .Sentences}}
-    <ul class="simple-list">
-      {{range .Sentences}}
-      <li>
-        <div>{{.Text}}</div>
-        <small>ID: {{.ID}}</small>
-      </li>
-      {{end}}
-    </ul>
-  {{else}}
-    <p>No published sentence yet.</p>
+{{if .Sentences}}
+  {{range .Sentences}}
+  <div class="published-item">
+    <p class="published-text">{{.Text}}</p>
+    <div class="reaction-counts">
+      <span class="count-heart">❤️ {{.Heart}}</span>
+      <span class="count-hate">💔 {{.Hate}}</span>
+      <span class="count-ignore">🙈 {{.Ignore}}</span>
+    </div>
+  </div>
   {{end}}
-</section>
+{{else}}
+  <p class="empty-state">No published sentences yet.</p>
+{{end}}
 {{end}}

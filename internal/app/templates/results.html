@@ -1,17 +1,11 @@
 {{define "results"}}
-<section class="card">
-  {{if .Success}}
-    <h2>Final results</h2>
-    <p>{{.Sentence.Text}}</p>
-    <ul>
-      <li>❤️ Heart: {{.Sentence.Heart}}</li>
-      <li>💔 Hate: {{.Sentence.Hate}}</li>
-      <li>🙈 Ignore: {{.Sentence.Ignore}}</li>
-    </ul>
-  {{else}}
-    <h2>Not ready yet</h2>
-    <p>Results unlock in: <strong>{{.RemainingText}}</strong></p>
-    <div hx-get="/results/{{.Sentence.ID}}" hx-trigger="every 60s" hx-swap="outerHTML"></div>
-  {{end}}
+<section class="results-card">
+  <h2>Results</h2>
+  <p class="results-text">{{.Sentence.Text}}</p>
+  <div class="result-counts">
+    <span class="result-count">❤️ <strong>{{.Sentence.Heart}}</strong></span>
+    <span class="result-count">💔 <strong>{{.Sentence.Hate}}</strong></span>
+    <span class="result-count">🙈 <strong>{{.Sentence.Ignore}}</strong></span>
+  </div>
 </section>
 {{end}}

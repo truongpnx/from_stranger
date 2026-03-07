@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -16,7 +17,6 @@ import (
 	"from_stranger/internal/publish"
 	"from_stranger/internal/random"
 	"from_stranger/internal/reaction"
-	"from_stranger/internal/results"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -105,16 +105,16 @@ func (a *App) handlePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sentence, err := a.store.publish(r.Context(), userID, text)
+	_, err := a.store.publish(r.Context(), userID, text)
 	if err != nil {
 		a.render(w, "publish_result", ViewData{Message: err.Error(), Success: false})
 		return
 	}
 
+	w.Header().Set("HX-Trigger", "publishRefresh")
 	a.render(w, "publish_result", ViewData{
-		Message:  "Sentence published successfully.",
-		Success:  true,
-		ResultID: sentence.ID,
+		Message: "Sentence published!",
+		Success: true,
 	})
 }
 
@@ -132,17 +132,21 @@ func (a *App) handleRandom(w http.ResponseWriter, r *http.Request) {
 	userID := ensureUserID(w, r)
 	sentence, ok, err := a.store.randomForUser(r.Context(), userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	if !ok {
-		a.render(w, "sentence_card", ViewData{
-			Sentence: &Sentence{ID: "fallback", Text: random.FallbackSentence(), Fallback: true},
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"id": "fallback", "text": random.FallbackSentence(), "fallback": true,
 		})
 		return
 	}
-
-	a.render(w, "sentence_card", ViewData{Sentence: &sentence})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id": sentence.ID, "text": sentence.Text, "fallback": sentence.Fallback,
+	})
 }
 
 func (a *App) handleReact(w http.ResponseWriter, r *http.Request) {
@@ -151,11 +155,12 @@ func (a *App) handleReact(w http.ResponseWriter, r *http.Request) {
 	reactionType := strings.TrimSpace(r.FormValue("reaction_type"))
 
 	if err := a.store.react(r.Context(), userID, sentenceID, reactionType); err != nil {
-		a.render(w, "reaction_result", ViewData{Message: err.Error(), Success: false})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
-	w.Header().Set("HX-Trigger", "next-sentence")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -186,17 +191,7 @@ func (a *App) handleResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remaining := results.Remaining(sentence.ExpiresAt)
-	if remaining <= 0 {
-		a.render(w, "results", ViewData{Sentence: &sentence, Success: true})
-		return
-	}
-
-	a.render(w, "results", ViewData{
-		Sentence:      &sentence,
-		Success:       false,
-		RemainingText: remaining.Truncate(time.Second).String(),
-	})
+	a.render(w, "results", ViewData{Sentence: &sentence, Success: true})
 }
 
 func (a *App) render(w http.ResponseWriter, name string, data ViewData) {
@@ -207,17 +202,11 @@ func (a *App) render(w http.ResponseWriter, name string, data ViewData) {
 }
 
 func (s *Store) publish(ctx context.Context, userID, text string) (Sentence, error) {
-	publishCountKey := userPublishCountKey(userID)
-	count, err := s.redis.Incr(ctx, publishCountKey).Result()
+	count, err := s.countKeys(ctx, userPublishedPattern(userID))
 	if err != nil {
 		return Sentence{}, err
 	}
-	if count == 1 {
-		if err := s.redis.Expire(ctx, publishCountKey, sentenceTTL).Err(); err != nil {
-			return Sentence{}, err
-		}
-	}
-	if count > maxPublishPerUser {
+	if count >= maxPublishPerUser {
 		return Sentence{}, fmt.Errorf("publish limit reached (%d per 24h)", maxPublishPerUser)
 	}
 
@@ -246,8 +235,9 @@ func (s *Store) publish(ctx context.Context, userID, text string) (Sentence, err
 
 	pipe := s.redis.TxPipeline()
 	pipe.HSet(ctx, sentenceKey(sentence.ID), hash)
+	pipe.Expire(ctx, sentenceKey(sentence.ID), sentenceTTL)
 	pipe.SAdd(ctx, activeSetKey, sentence.ID)
-	pipe.ZAdd(ctx, userPublishedKey(userID), redis.Z{Score: float64(sentence.CreatedAt.Unix()), Member: sentence.ID})
+	pipe.Set(ctx, userPublishedKey(userID, sentence.ID), sentence.ID, sentenceTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return Sentence{}, err
 	}
@@ -265,6 +255,7 @@ func (s *Store) randomForUser(ctx context.Context, userID string) (Sentence, boo
 	}
 
 	now := time.Now().UTC()
+	var stale []interface{}
 	candidates := make([]Sentence, 0, len(activeIDs))
 	for _, id := range activeIDs {
 		item, ok, err := s.getSentence(ctx, id)
@@ -272,17 +263,20 @@ func (s *Store) randomForUser(ctx context.Context, userID string) (Sentence, boo
 			return Sentence{}, false, err
 		}
 		if !ok {
-			_ = s.redis.SRem(ctx, activeSetKey, id).Err()
+			stale = append(stale, id)
 			continue
 		}
 		if now.After(item.ExpiresAt) {
-			_ = s.redis.SRem(ctx, activeSetKey, id).Err()
+			stale = append(stale, id)
 			continue
 		}
 		if item.Author == userID {
 			continue
 		}
 		candidates = append(candidates, item)
+	}
+	if len(stale) > 0 {
+		_ = s.redis.SRem(ctx, activeSetKey, stale...).Err()
 	}
 
 	if len(candidates) == 0 {
@@ -365,57 +359,86 @@ func (s *Store) results(ctx context.Context, id string) (Sentence, bool, error) 
 }
 
 func (s *Store) publishedByUser(ctx context.Context, userID string) ([]Sentence, error) {
-	ids, err := s.redis.ZRangeArgs(ctx, redis.ZRangeArgs{
-		Key:   userPublishedKey(userID),
-		Start: 0,
-		Stop:  -1,
-	}).Result()
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]Sentence, 0, len(ids))
-	for _, id := range ids {
-		sentence, ok, err := s.getSentence(ctx, id)
+	pattern := userPublishedPattern(userID)
+	var items []Sentence
+	var cursor uint64
+	for {
+		keys, next, err := s.redis.Scan(ctx, cursor, pattern, 20).Result()
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			continue
+		for _, key := range keys {
+			id, err := s.redis.Get(ctx, key).Result()
+			if err != nil {
+				continue
+			}
+			sentence, ok, err := s.getSentence(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				continue
+			}
+			items = append(items, sentence)
 		}
-		items = append(items, sentence)
+		cursor = next
+		if cursor == 0 {
+			break
+		}
 	}
-
 	return items, nil
 }
 
 func (s *Store) readyResultsByUser(ctx context.Context, userID string) ([]Sentence, error) {
-	ids, err := s.redis.ZRangeArgs(ctx, redis.ZRangeArgs{
-		Key:   userPublishedKey(userID),
-		Start: 0,
-		Stop:  -1,
-	}).Result()
-	if err != nil {
-		return nil, err
-	}
-
+	pattern := userPublishedPattern(userID)
 	now := time.Now().UTC()
-	items := make([]Sentence, 0, len(ids))
-	for _, id := range ids {
-		sentence, ok, err := s.getSentence(ctx, id)
+	var items []Sentence
+	var cursor uint64
+	for {
+		keys, next, err := s.redis.Scan(ctx, cursor, pattern, 20).Result()
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			continue
+		for _, key := range keys {
+			id, err := s.redis.Get(ctx, key).Result()
+			if err != nil {
+				continue
+			}
+			sentence, ok, err := s.getSentence(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				continue
+			}
+			if now.Before(sentence.ExpiresAt) {
+				continue
+			}
+			items = append(items, sentence)
 		}
-		if now.Before(sentence.ExpiresAt) {
-			continue
+		cursor = next
+		if cursor == 0 {
+			break
 		}
-		items = append(items, sentence)
 	}
-
 	return items, nil
+}
+
+func (s *Store) countKeys(ctx context.Context, pattern string) (int, error) {
+	var count int
+	var cursor uint64
+	for {
+		keys, next, err := s.redis.Scan(ctx, cursor, pattern, 20).Result()
+		if err != nil {
+			return 0, err
+		}
+		count += len(keys)
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return count, nil
 }
 
 func (s *Store) getSentence(ctx context.Context, id string) (Sentence, bool, error) {
@@ -489,12 +512,12 @@ func userSeenKey(userID string) string {
 	return "user:" + userID + ":seen"
 }
 
-func userPublishCountKey(userID string) string {
-	return "user:" + userID + ":publish_count"
+func userPublishedKey(userID, sentenceID string) string {
+	return "user:" + userID + ":published:" + sentenceID
 }
 
-func userPublishedKey(userID string) string {
-	return "user:" + userID + ":published"
+func userPublishedPattern(userID string) string {
+	return "user:" + userID + ":published:*"
 }
 
 func userReactedKey(userID, sentenceID string) string {

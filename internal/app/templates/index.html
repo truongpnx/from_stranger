@@ -1,28 +1,43 @@
 {{define "content"}}
-<section class="card">
-  <h2>Publish</h2>
-  <form hx-post="/publish" hx-target="#publish-result" hx-swap="innerHTML">
-    <textarea name="text" rows="4" maxlength="700" placeholder="Write up to 100 words" required></textarea>
-    <button type="submit">Publish</button>
-  </form>
-  <div id="publish-result"></div>
-  <div class="inline-actions">
-    <button hx-get="/published" hx-target="#published-list" hx-swap="innerHTML">Refresh my published</button>
+<section class="panel panel-left active" data-tab-content="world">
+  <div class="card-flip-container">
+    <div class="card-scene">
+      <div class="sentence-card" id="sentence-card">
+        <div class="card-content" id="card-content">
+          <div class="loading-dots"><span></span><span></span><span></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="swipe-hints">
+      <span class="hint-left">← Hate</span>
+      <span class="hint-down">↓ Ignore</span>
+      <span class="hint-right">Heart →</span>
+    </div>
   </div>
-  <div id="published-list" hx-get="/published" hx-trigger="load" hx-swap="innerHTML"></div>
 </section>
 
-<section class="card">
-  <h2>Random sentence</h2>
-  <div id="random-result" hx-get="/random" hx-trigger="load, next-sentence from:body" hx-swap="innerHTML"></div>
-</section>
-
-<section class="card">
-  <h2>Results</h2>
-  <div class="inline-actions">
-    <button hx-get="/results/ready" hx-target="#ready-results" hx-swap="innerHTML">Refresh ready results</button>
+<section class="panel panel-right" data-tab-content="publish">
+  <div class="sub-tabs">
+    <button class="sub-tab active" data-subtab="input">Write</button>
+    <button class="sub-tab" data-subtab="list">My Sentences</button>
   </div>
-  <div id="ready-results" hx-get="/results/ready" hx-trigger="load" hx-swap="innerHTML"></div>
-  <div id="result-detail"></div>
+
+  <div class="sub-content active" data-subtab-content="input">
+    <div class="publish-section">
+      <h2>Publish a sentence</h2>
+      <form hx-post="/publish" hx-target="#publish-result" hx-swap="innerHTML">
+        <textarea name="text" rows="3" maxlength="700" placeholder="Write up to 100 words..." required></textarea>
+        <button type="submit" class="btn-publish">Publish</button>
+      </form>
+      <div id="publish-result"></div>
+    </div>
+  </div>
+
+  <div class="sub-content" data-subtab-content="list">
+    <div class="published-section">
+      <h2>My Published Sentences</h2>
+      <div id="published-list" hx-get="/published" hx-trigger="load, every 30s, publishRefresh from:body" hx-swap="innerHTML"></div>
+    </div>
+  </div>
 </section>
 {{end}}
