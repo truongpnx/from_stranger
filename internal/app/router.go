@@ -202,7 +202,8 @@ func (a *App) render(w http.ResponseWriter, name string, data ViewData) {
 }
 
 func (s *Store) publish(ctx context.Context, userID, text string) (Sentence, error) {
-	count, err := s.countKeys(ctx, userPublishedPattern(userID))
+	// Clean stale entries and count remaining before enforcing the limit.
+	count, err := s.ensurePublished(ctx, userID)
 	if err != nil {
 		return Sentence{}, err
 	}
@@ -237,7 +238,8 @@ func (s *Store) publish(ctx context.Context, userID, text string) (Sentence, err
 	pipe.HSet(ctx, sentenceKey(sentence.ID), hash)
 	pipe.Expire(ctx, sentenceKey(sentence.ID), sentenceTTL)
 	pipe.SAdd(ctx, activeSetKey, sentence.ID)
-	pipe.Set(ctx, userPublishedKey(userID, sentence.ID), sentence.ID, sentenceTTL)
+	pipe.SAdd(ctx, userPublishedSetKey(userID), sentence.ID)
+	pipe.Expire(ctx, userPublishedSetKey(userID), sentenceTTL)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return Sentence{}, err
 	}
@@ -359,86 +361,86 @@ func (s *Store) results(ctx context.Context, id string) (Sentence, bool, error) 
 }
 
 func (s *Store) publishedByUser(ctx context.Context, userID string) ([]Sentence, error) {
-	pattern := userPublishedPattern(userID)
-	var items []Sentence
-	var cursor uint64
-	for {
-		keys, next, err := s.redis.Scan(ctx, cursor, pattern, 20).Result()
+	setKey := userPublishedSetKey(userID)
+	ids, err := s.redis.SMembers(ctx, setKey).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	var stale []interface{}
+	items := make([]Sentence, 0, len(ids))
+	for _, id := range ids {
+		sentence, ok, err := s.getSentence(ctx, id)
 		if err != nil {
 			return nil, err
 		}
-		for _, key := range keys {
-			id, err := s.redis.Get(ctx, key).Result()
-			if err != nil {
-				continue
-			}
-			sentence, ok, err := s.getSentence(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-			if !ok {
-				continue
-			}
-			items = append(items, sentence)
+		if !ok {
+			stale = append(stale, id)
+			continue
 		}
-		cursor = next
-		if cursor == 0 {
-			break
-		}
+		items = append(items, sentence)
+	}
+	if len(stale) > 0 {
+		_ = s.redis.SRem(ctx, setKey, stale...).Err()
 	}
 	return items, nil
 }
 
 func (s *Store) readyResultsByUser(ctx context.Context, userID string) ([]Sentence, error) {
-	pattern := userPublishedPattern(userID)
+	setKey := userPublishedSetKey(userID)
+	ids, err := s.redis.SMembers(ctx, setKey).Result()
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
-	var items []Sentence
-	var cursor uint64
-	for {
-		keys, next, err := s.redis.Scan(ctx, cursor, pattern, 20).Result()
+	var stale []interface{}
+	items := make([]Sentence, 0, len(ids))
+	for _, id := range ids {
+		sentence, ok, err := s.getSentence(ctx, id)
 		if err != nil {
 			return nil, err
 		}
-		for _, key := range keys {
-			id, err := s.redis.Get(ctx, key).Result()
-			if err != nil {
-				continue
-			}
-			sentence, ok, err := s.getSentence(ctx, id)
-			if err != nil {
-				return nil, err
-			}
-			if !ok {
-				continue
-			}
-			if now.Before(sentence.ExpiresAt) {
-				continue
-			}
-			items = append(items, sentence)
+		if !ok {
+			stale = append(stale, id)
+			continue
 		}
-		cursor = next
-		if cursor == 0 {
-			break
+		if now.Before(sentence.ExpiresAt) {
+			continue
 		}
+		items = append(items, sentence)
+	}
+	if len(stale) > 0 {
+		_ = s.redis.SRem(ctx, setKey, stale...).Err()
 	}
 	return items, nil
 }
 
-func (s *Store) countKeys(ctx context.Context, pattern string) (int, error) {
-	var count int
-	var cursor uint64
-	for {
-		keys, next, err := s.redis.Scan(ctx, cursor, pattern, 20).Result()
+// ensurePublished removes stale IDs from the user's published set and returns
+// the number of sentences that still exist.
+func (s *Store) ensurePublished(ctx context.Context, userID string) (int, error) {
+	setKey := userPublishedSetKey(userID)
+	ids, err := s.redis.SMembers(ctx, setKey).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	var stale []interface{}
+	for _, id := range ids {
+		exists, err := s.redis.Exists(ctx, sentenceKey(id)).Result()
 		if err != nil {
 			return 0, err
 		}
-		count += len(keys)
-		cursor = next
-		if cursor == 0 {
-			break
+		if exists == 0 {
+			stale = append(stale, id)
 		}
 	}
-	return count, nil
+	if len(stale) > 0 {
+		if err := s.redis.SRem(ctx, setKey, stale...).Err(); err != nil {
+			return 0, err
+		}
+	}
+	return len(ids) - len(stale), nil
 }
 
 func (s *Store) getSentence(ctx context.Context, id string) (Sentence, bool, error) {
@@ -512,12 +514,8 @@ func userSeenKey(userID string) string {
 	return "user:" + userID + ":seen"
 }
 
-func userPublishedKey(userID, sentenceID string) string {
-	return "user:" + userID + ":published:" + sentenceID
-}
-
-func userPublishedPattern(userID string) string {
-	return "user:" + userID + ":published:*"
+func userPublishedSetKey(userID string) string {
+	return "user:" + userID + ":published"
 }
 
 func userReactedKey(userID, sentenceID string) string {
