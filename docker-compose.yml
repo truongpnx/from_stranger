@@ -10,15 +10,19 @@ services:
       - REDIS_PORT=6379
     depends_on:
       - redis
+    networks:
+      - default
   
   redis:
     image: redis:latest
+    command: redis-server --appendonly yes --save 900 1 --save 300 10 --save 60 10000
+    networks:
+      - default
     volumes:
       - redis_data:/data
 
 networks:
   default:
-    name: bridge
     driver: bridge
 
 volumes:
