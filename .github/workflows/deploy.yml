@@ -1,0 +1,60 @@
+name: Deploy Go App
+
+on:
+  push:
+    branches: [ "master" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build binary
+        run: |
+          go mod download
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o from-stranger ./cmd/server
+
+      - name: Package release
+        run: |
+          mkdir -p release
+
+          cp from-stranger release/
+
+          rsync -av \
+            --include="*/" \
+            --include="*.html" \
+            --include="*.css" \
+            --include="*.js" \
+            --include="*.png" \
+            --exclude="*" \
+            internal/ release/internal/
+
+          tar -czf release.tar.gz -C release .
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to EC2
+        run: |
+          scp release.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/
+
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
+            sudo systemctl stop from-stranger || true &&
+            mkdir -p /home/${{ secrets.EC2_USER }}/from-stranger &&
+            tar -xzf /home/${{ secrets.EC2_USER }}/release.tar.gz -C /home/${{ secrets.EC2_USER }}/from-stranger &&
+            chmod +x /home/${{ secrets.EC2_USER }}/from-stranger/from-stranger &&
+            rm /home/${{ secrets.EC2_USER }}/release.tar.gz &&
+            sudo systemctl start from-stranger
+          "
