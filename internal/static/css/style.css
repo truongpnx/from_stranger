@@ -227,8 +227,13 @@ textarea:focus {
   transition: background var(--transition);
 }
 
-.btn-publish:hover {
+.btn-publish:hover:not(:disabled) {
   background: var(--accent-hover);
+}
+
+.btn-publish:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Status messages */

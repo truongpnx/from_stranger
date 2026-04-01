@@ -142,7 +142,7 @@
           e.preventDefault();
           showReactionThenNext('hate');
           break;
-        case 'ArrowDown':
+        case 'ArrowUp':
           e.preventDefault();
           showReactionThenNext('ignore');
           break;
@@ -169,7 +169,7 @@
 
       if (absDx < threshold && absDy < threshold) return;
 
-      if (absDy > absDx && dy > 0) {
+      if (absDy > absDx && dy < 0) {
         showReactionThenNext('ignore');
       } else if (absDx > absDy) {
         showReactionThenNext(dx > 0 ? 'heart' : 'hate');
@@ -184,12 +184,36 @@
     return d.innerHTML;
   }
 
+  // ─── Publish form ───
+  function initPublishForm() {
+    const form = $('form[hx-post="/publish"]');
+    const textarea = form && $('textarea', form);
+    const btn = form && $('.btn-publish', form);
+    const result = $('#publish-result');
+    if (!form || !textarea || !btn) return;
+
+    textarea.addEventListener('input', () => {
+      btn.disabled = textarea.value.trim().length === 0;
+    });
+
+    document.addEventListener('htmx:afterSwap', (e) => {
+      if (e.detail.target !== result) return;
+      const isSuccess = !!$('.status.ok', result);
+      if (isSuccess) {
+        textarea.value = '';
+        btn.disabled = true;
+      }
+      setTimeout(() => { result.innerHTML = ''; }, 5000);
+    });
+  }
+
   // ─── Init ───
   function init() {
     initMobileNav();
     initSubTabs();
     initKeyboard();
     initSwipe();
+    initPublishForm();
     fetchSentence();
   }
 

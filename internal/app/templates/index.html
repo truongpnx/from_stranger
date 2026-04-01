@@ -10,7 +10,7 @@
     </div>
     <div class="swipe-hints">
       <span class="hint-left">← Hate</span>
-      <span class="hint-down">↓ Ignore</span>
+      <span class="hint-up">↑ Ignore</span>
       <span class="hint-right">Heart →</span>
     </div>
   </div>
@@ -27,7 +27,7 @@
       <h2>Publish a sentence</h2>
       <form hx-post="/publish" hx-target="#publish-result" hx-swap="innerHTML">
         <textarea name="text" rows="3" maxlength="700" placeholder="Write up to 100 words..." required></textarea>
-        <button type="submit" class="btn-publish">Publish</button>
+        <button type="submit" class="btn-publish" disabled>Publish</button>
       </form>
       <div id="publish-result"></div>
     </div>
