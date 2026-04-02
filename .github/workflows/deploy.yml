@@ -44,17 +44,17 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy to EC2
         run: |
-          scp release.tar.gz ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/
+          scp release.tar.gz ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/${{ secrets.SSH_USER }}/
 
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             sudo systemctl stop from-stranger || true &&
-            mkdir -p /home/${{ secrets.EC2_USER }}/from-stranger &&
-            tar -xzf /home/${{ secrets.EC2_USER }}/release.tar.gz -C /home/${{ secrets.EC2_USER }}/from-stranger &&
-            chmod +x /home/${{ secrets.EC2_USER }}/from-stranger/from-stranger &&
-            rm /home/${{ secrets.EC2_USER }}/release.tar.gz &&
+            mkdir -p /home/${{ secrets.SSH_USER }}/from-stranger &&
+            tar -xzf /home/${{ secrets.SSH_USER }}/release.tar.gz -C /home/${{ secrets.SSH_USER }}/from-stranger &&
+            chmod +x /home/${{ secrets.SSH_USER }}/from-stranger/from-stranger &&
+            rm /home/${{ secrets.SSH_USER }}/release.tar.gz &&
             sudo systemctl start from-stranger
           "
