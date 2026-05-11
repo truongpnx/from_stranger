@@ -1,0 +1,15 @@
+[Unit]
+Description=from-stranger Go application
+After=network.target
+
+[Service]
+Type=simple
+User=${SSH_USER}
+WorkingDirectory=/opt/from-stranger
+ExecStart=/opt/from-stranger/from-stranger
+Environment=PORT=8080
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

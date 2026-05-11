@@ -27,6 +27,7 @@ jobs:
           mkdir -p release
 
           cp from-stranger release/
+          cp scripts/from-stranger.service release/
 
           rsync -av \
             --include="*/" \
@@ -52,9 +53,14 @@ jobs:
 
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
             sudo systemctl stop from-stranger || true &&
-            mkdir -p /home/${{ secrets.SSH_USER }}/from-stranger &&
-            tar -xzf /home/${{ secrets.SSH_USER }}/release.tar.gz -C /home/${{ secrets.SSH_USER }}/from-stranger &&
-            chmod +x /home/${{ secrets.SSH_USER }}/from-stranger/from-stranger &&
+            sudo mkdir -p /opt/from-stranger &&
+            sudo tar -xzf /home/${{ secrets.SSH_USER }}/release.tar.gz -C /opt/from-stranger &&
+            sudo chmod +x /opt/from-stranger/from-stranger &&
+            sudo restorecon -v /opt/from-stranger/from-stranger &&
             rm /home/${{ secrets.SSH_USER }}/release.tar.gz &&
+            sudo sed -i 's|\${SSH_USER}|${{ secrets.SSH_USER }}|g' /opt/from-stranger/from-stranger.service &&
+            sudo cp /opt/from-stranger/from-stranger.service /etc/systemd/system/from-stranger.service &&
+            sudo systemctl daemon-reload &&
+            sudo systemctl enable from-stranger &&
             sudo systemctl start from-stranger
           "
